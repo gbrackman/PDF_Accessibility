@@ -67,6 +67,7 @@ def split_pdf_into_pages(source_content, original_key, s3_client, bucket_name, p
     reader = PdfReader(io.BytesIO(source_content))
     num_pages = len(reader.pages)
     file_basename = original_key.split('/')[-1].rsplit('.', 1)[0]
+    original_pdf_key = original_key  # Preserve the full original path
     
     chunks = []
 
@@ -98,7 +99,8 @@ def split_pdf_into_pages(source_content, original_key, s3_client, bucket_name, p
         chunks.append({
             "s3_bucket": bucket_name,
             "s3_key": s3_key,
-            "chunk_key": s3_key  # Key for the chunk
+            "chunk_key": s3_key,  # Key for the chunk
+            "original_pdf_key": original_pdf_key  # Add original path
         })
 
     return chunks
@@ -150,7 +152,11 @@ def lambda_handler(event, context):
         # Trigger Step Function with the list of chunks
         response = stepfunctions.start_execution(
             stateMachineArn=state_machine_arn,
-            input=json.dumps({"chunks": chunks, "s3_bucket": bucket_name})
+            input=json.dumps({
+                "chunks": chunks, 
+                "s3_bucket": bucket_name,
+                "original_pdf_key": pdf_file_key  # Pass original path to Step Functions
+            })
         )
         print(f"Filename - {pdf_file_key} | Step Function started: {response['executionArn']}")
 

@@ -15,11 +15,11 @@ def create_json_output_file_path():
         os.makedirs("/tmp/PDFAccessibilityChecker", exist_ok=True)
         return f"/tmp/PDFAccessibilityChecker/result_before_remidiation.json"
 
-def download_file_from_s3(bucket_name,file_key, local_path):
+def download_file_from_s3(bucket_name, file_key, local_path, original_pdf_key):
     s3 = boto3.client('s3')
-    print(f"Filename : {file_key} | File key in the function: {file_key}")
+    print(f"Filename : {file_key} | File key in the function: {original_pdf_key}")
 
-    s3.download_file(bucket_name, f"pdf/{file_key}", local_path)
+    s3.download_file(bucket_name, original_pdf_key, local_path)
 
     print(f"Filename : {file_key} | Downloaded {file_key} from {bucket_name} to {local_path}")
 
@@ -68,6 +68,8 @@ def lambda_handler(event, context):
     print("Received event:", event)
     s3_bucket = event.get('s3_bucket', None)
     chunks = event.get('chunks', [])
+    original_pdf_key = event.get('original_pdf_key', None)  # Get original path
+    
     if chunks:
         first_chunk = chunks[0]
         s3_key = first_chunk.get('s3_key', None)
@@ -78,8 +80,9 @@ def lambda_handler(event, context):
             
     print("File basename:", file_basename)
     print("s3_bucket:", s3_bucket)
+    print("Original PDF key:", original_pdf_key)  # Log the original path
     local_path = f"/tmp/{file_basename}"
-    download_file_from_s3(s3_bucket, file_basename, local_path)
+    download_file_from_s3(s3_bucket, file_basename, local_path, original_pdf_key)
 
     try:
         pdf_file = open(local_path, 'rb')
