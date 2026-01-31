@@ -247,6 +247,154 @@ s3_folder_autotag = f"{file_directory}/output_autotag"
 
 ---
 
+### 5. `javascript_docker/alt-text.js`
+
+#### Change 1: Update startProcess to use S3_CHUNK_KEY (Line ~420)
+```javascript
+// BEFORE:
+const bucketName = process.env.S3_BUCKET_NAME;
+const textFileKey = `${process.env.S3_FILE_KEY.split("/")[1]}/output_autotag/${process.env.S3_FILE_KEY.split("/").pop()}_temp_images_data.db`;
+const filebasename = process.env.S3_FILE_KEY.split("/")[1];
+
+// AFTER:
+const bucketName = process.env.S3_BUCKET_NAME;
+const s3ChunkKey = process.env.S3_CHUNK_KEY || process.env.S3_FILE_KEY;
+
+// Extract file_directory from chunk key (everything except the filename)
+// Example: temp/batch1/doc/doc_chunk_1.pdf -> temp/batch1/doc
+const fileDirectory = s3ChunkKey.split('/').slice(0, -1).join('/');
+const fileKey = s3ChunkKey.split('/').pop();
+
+const textFileKey = `${fileDirectory}/output_autotag/${fileKey}_temp_images_data.db`;
+const filebasename = fileDirectory.split('/').pop();
+```
+
+#### Change 2: Update image path construction (Line ~455)
+```javascript
+// BEFORE:
+const splitKey = process.env.S3_FILE_KEY.split('/');
+logger.info(`thr path in the loop: temp/${splitKey[1]}/output_autotag/images/${row.img_path}`);
+return {
+    id: row.objid,
+    path: `temp/${splitKey[1]}/output_autotag/images/${splitKey.pop()}_${row.img_path}`,
+    context_json: {
+        context: row.context,
+    },
+};
+
+// AFTER:
+logger.info(`thr path in the loop: ${fileDirectory}/output_autotag/images/${row.img_path}`);
+return {
+    id: row.objid,
+    path: `${fileDirectory}/output_autotag/images/${fileKey}_${row.img_path}`,
+    context_json: {
+        context: row.context,
+    },
+};
+```
+
+#### Change 3: Update modifyPDF call (Line ~530)
+```javascript
+// BEFORE:
+await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", path.basename(process.env.S3_FILE_KEY), filebasename);
+
+// AFTER:
+await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", fileKey, filebasename);
+```
+
+#### Change 4: Update PDF download path in modifyPDF (Line ~325)
+```javascript
+// BEFORE:
+const downloadParams = {
+   Bucket: process.env.S3_BUCKET_NAME,
+    Key: `temp/${filebasename}/output_autotag/COMPLIANT_${process.env.S3_FILE_KEY.split("/").pop()}`,
+};
+
+// AFTER:
+const downloadParams = {
+   Bucket: process.env.S3_BUCKET_NAME,
+    Key: `${fileDirectory}/output_autotag/COMPLIANT_${fileKey}`,
+};
+```
+
+#### Change 5: Update PDF upload path in modifyPDF (Line ~395)
+```javascript
+// BEFORE:
+const uploadParams = {
+    Bucket: bucketName,
+    Key: `temp/${filebasename}/FINAL_${outputKey}`,
+    Body: fs_1.createReadStream(modifiedPdfPath),
+    ContentType: 'application/pdf'
+};
+
+// AFTER:
+const uploadParams = {
+    Bucket: bucketName,
+    Key: `${fileDirectory}/FINAL_${outputKey}`,
+    Body: fs_1.createReadStream(modifiedPdfPath),
+    ContentType: 'application/pdf'
+};
+```
+
+---
+
+### 6. `app.py` (CDK Configuration)
+
+#### Change: Add S3_CHUNK_KEY to ECS Task 2 environment (Line ~240)
+```python
+# BEFORE:
+ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
+    ...
+    container_overrides=[tasks.ContainerOverride(
+        container_definition=container_definition_2,
+        environment=[
+            tasks.TaskEnvironmentVariable(
+                name="S3_BUCKET_NAME",
+                value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[0].Value")
+            ),
+            tasks.TaskEnvironmentVariable(
+                name="S3_FILE_KEY",
+                value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[1].Value")
+            ),
+            tasks.TaskEnvironmentVariable(
+                name="AWS_REGION",
+                value=region
+            ),
+        ]
+    )],
+    ...
+)
+
+# AFTER:
+ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
+    ...
+    container_overrides=[tasks.ContainerOverride(
+        container_definition=container_definition_2,
+        environment=[
+            tasks.TaskEnvironmentVariable(
+                name="S3_BUCKET_NAME",
+                value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[0].Value")
+            ),
+            tasks.TaskEnvironmentVariable(
+                name="S3_FILE_KEY",
+                value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[1].Value")
+            ),
+            tasks.TaskEnvironmentVariable(
+                name="S3_CHUNK_KEY",
+                value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[2].Value")
+            ),
+            tasks.TaskEnvironmentVariable(
+                name="AWS_REGION",
+                value=region
+            ),
+        ]
+    )],
+    ...
+)
+```
+
+---
+
 ## What Enhancement 2 Enables
 
 ### Before Enhancement 2:
@@ -306,6 +454,7 @@ With both enhancements:
 4. ✅ **Easy retrieval** - Find processed files in the same location
 5. ✅ **Backward compatible** - Files in root `pdf/` still work
 6. ✅ **No new files** - All changes use existing infrastructure
+7. ✅ **Both ECS containers** - Python and JavaScript containers both support folder paths
 
 ---
 
@@ -352,7 +501,11 @@ To deploy these changes:
    git add lambda/split_pdf/main.py
    git add lambda/accessibility_checker_before_remidiation/main.py
    git add lambda/add_title/myapp.py
-   git commit -m "Add folder structure preservation in outputs"
+   git add docker_autotag/autotag.py
+   git add javascript_docker/alt-text.js
+   git add app.py
+   git add FIX_APPLIED_SUMMARY.md
+   git commit -m "Add folder structure preservation in outputs - complete implementation"
    git push origin main
    ```
 
@@ -391,11 +544,12 @@ To deploy these changes:
 
 ### Why This Works
 
-- **Simple**: Only 3 files modified, ~20 lines of code total
+- **Simple**: Only 6 files modified, ~40 lines of code total
 - **Efficient**: No additional S3 operations or file copies
 - **Robust**: Handles any folder depth automatically
 - **Compatible**: Works with existing infrastructure
-- **Automatic**: Other components (ECS, Java merger) automatically follow the new structure
+- **Automatic**: Other components (Java merger) automatically follow the new structure
+- **Consistent**: Both ECS containers (Python and JavaScript) use the same approach
 
 ---
 
@@ -403,12 +557,13 @@ To deploy these changes:
 
 - Both enhancements only modify the PDF-to-PDF solution
 - PDF-to-HTML solution already handles folders correctly
-- No infrastructure (CDK/CloudFormation) changes needed
+- No infrastructure (CDK/CloudFormation) changes needed beyond environment variable passing
 - No Step Functions state machine changes needed
 - All other Lambda functions automatically work with the new structure
+- Both ECS containers (Python autotag and JavaScript alt-text) now handle folder paths correctly
 
 ---
 
 **Enhancement 1 Applied**: January 29, 2026  
-**Enhancement 2 Applied**: January 29, 2026  
-**Status**: Ready for deployment and testing
+**Enhancement 2 Applied**: January 31, 2026  
+**Status**: Complete - Ready for deployment and testing

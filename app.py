@@ -195,6 +195,10 @@ class PDFAccessibility(Stack):
                                                   value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[1].Value")
                                               ),
                                               tasks.TaskEnvironmentVariable(
+                                                  name="S3_CHUNK_KEY",
+                                                  value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[2].Value")
+                                              ),
+                                              tasks.TaskEnvironmentVariable(
                                                   name="AWS_REGION",
                                                   value=region
                                               ),
