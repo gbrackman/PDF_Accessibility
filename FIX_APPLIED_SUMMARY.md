@@ -340,9 +340,9 @@ const uploadParams = {
 
 ### 6. `app.py` (CDK Configuration)
 
-#### Change: Add S3_CHUNK_KEY to ECS Task 2 environment (Line ~240)
+#### Change: Fix ECS Task 2 environment variable passing (Line ~240)
 ```python
-# BEFORE:
+# BEFORE (INCORRECT - trying to read from Task 1 output):
 ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
     ...
     container_overrides=[tasks.ContainerOverride(
@@ -365,7 +365,7 @@ ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
     ...
 )
 
-# AFTER:
+# AFTER (CORRECT - reading from Map iteration input):
 ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
     ...
     container_overrides=[tasks.ContainerOverride(
@@ -373,15 +373,15 @@ ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
         environment=[
             tasks.TaskEnvironmentVariable(
                 name="S3_BUCKET_NAME",
-                value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[0].Value")
+                value=sfn.JsonPath.string_at("$.s3_bucket")
             ),
             tasks.TaskEnvironmentVariable(
                 name="S3_FILE_KEY",
-                value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[1].Value")
+                value=sfn.JsonPath.string_at("$.s3_key")
             ),
             tasks.TaskEnvironmentVariable(
                 name="S3_CHUNK_KEY",
-                value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[2].Value")
+                value=sfn.JsonPath.string_at("$.chunk_key")
             ),
             tasks.TaskEnvironmentVariable(
                 name="AWS_REGION",
@@ -392,6 +392,13 @@ ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
     ...
 )
 ```
+
+**Why this fix was needed:**
+- ECS Task 2 runs AFTER Task 1 in the same Map iteration
+- It needs to receive the same chunk data that Task 1 received
+- The original code tried to extract values from Task 1's output structure, which doesn't contain these values
+- The correct approach is to read directly from the Map iteration input (the chunk object)
+- This ensures both tasks receive consistent S3 paths: `s3_bucket`, `s3_key`, and `chunk_key`
 
 ---
 
