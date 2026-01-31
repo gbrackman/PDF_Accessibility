@@ -202,6 +202,51 @@ save_path = save_to_s3(local_path, file_info['bucket'], file_name, folder_path)
 
 ---
 
+### 4. `docker_autotag/autotag.py`
+
+#### Change 1: Update S3 key parsing (Line ~605)
+```python
+# BEFORE:
+file_key = os.getenv('S3_FILE_KEY').split('/')[2]
+file_base_name = os.getenv('S3_FILE_KEY').split('/')[1]
+
+# AFTER:
+s3_file_key = os.getenv('S3_FILE_KEY')
+s3_chunk_key = os.getenv('S3_CHUNK_KEY')
+file_key = s3_chunk_key.split('/')[-1]
+file_directory = '/'.join(s3_chunk_key.split('/')[:-1])
+```
+
+#### Change 2: Update download to use full chunk key (Line ~620)
+```python
+# BEFORE:
+download_file_from_s3(bucket_name, file_base_name, file_key, local_file_path)
+
+# AFTER:
+s3.download_file(bucket_name, s3_chunk_key, local_file_path)
+```
+
+#### Change 3: Update save to use file_directory (Line ~645)
+```python
+# BEFORE:
+save_to_s3(filename, bucket_name, "output_autotag", file_base_name, file_key)
+
+# AFTER:
+output_key = f"{file_directory}/output_autotag/COMPLIANT_{file_key}"
+s3.upload_fileobj(data, bucket_name, output_key)
+```
+
+#### Change 4: Update s3_folder_autotag path (Line ~665)
+```python
+# BEFORE:
+s3_folder_autotag = f"temp/{file_base_name}/output_autotag"
+
+# AFTER:
+s3_folder_autotag = f"{file_directory}/output_autotag"
+```
+
+---
+
 ## What Enhancement 2 Enables
 
 ### Before Enhancement 2:

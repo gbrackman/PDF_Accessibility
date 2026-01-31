@@ -602,9 +602,20 @@ def main():
 
     try:    
         bucket_name = os.getenv('S3_BUCKET_NAME')
-        file_key = os.getenv('S3_FILE_KEY').split('/')[2]
-        file_base_name = os.getenv('S3_FILE_KEY').split('/')[1]
+        s3_file_key = os.getenv('S3_FILE_KEY')  # Full S3 key from chunk metadata
+        s3_chunk_key = os.getenv('S3_CHUNK_KEY')  # The actual chunk file path
+        
+        # Extract just the filename from the chunk key (last part after /)
+        file_key = s3_chunk_key.split('/')[-1]
+        
+        # Extract the directory path (everything except the filename)
+        # Example: temp/Sample-PDFs/Sample-Syllabus-1/Sample-Syllabus-1_chunk_1.pdf
+        # -> temp/Sample-PDFs/Sample-Syllabus-1
+        file_directory = '/'.join(s3_chunk_key.split('/')[:-1])
+        
         logging.info(f'Filename : {file_key} | Bucket Name: {bucket_name}')
+        logging.info(f'File directory: {file_directory}')
+        
         if not bucket_name or not file_key:
             logging.info("Error: S3_BUCKET_NAME and S3_FILE_KEY environment variables are required.")
             return
@@ -612,8 +623,9 @@ def main():
         # Define the local file path where the file will be saved
         local_file_path = os.path.basename(file_key)  # Save the file with its original name
         
-        # Download the file from S3
-        download_file_from_s3(bucket_name,file_base_name, file_key, local_file_path)
+        # Download the file from S3 using the full chunk key
+        s3.download_file(bucket_name, s3_chunk_key, local_file_path)
+        logging.info(f"Downloaded {file_key} from {bucket_name}/{s3_chunk_key} to {local_file_path}")
 
         base_filename = os.path.basename(local_file_path)
         filename = "COMPLIANT_" + base_filename
@@ -640,21 +652,28 @@ def main():
 
         pdf_document.saveIncr()
         pdf_document.close()
-        save_to_s3(filename, bucket_name, "output_autotag",file_base_name, file_key)
-
-        logging.info(f"PDF saved with updated metadata and TOC. File location: COMPLIANT_{file_key}")
+        
+        # Save to S3 using the directory path
+        # file_directory is like: temp/Sample-PDFs/Sample-Syllabus-1
+        # We need to save to: temp/Sample-PDFs/Sample-Syllabus-1/output_autotag/COMPLIANT_{file}
+        with open(filename, "rb") as data:
+            output_key = f"{file_directory}/output_autotag/COMPLIANT_{file_key}"
+            s3.upload_fileobj(data, bucket_name, output_key)
+        logging.info(f"PDF saved with updated metadata and TOC. File location: {output_key}")
 
         figure_path = f"{extract_to}/figures"
         autotag_report_path = f"output/AutotagPDF/{filename}.xlsx"
         images_output_dir = "output/zipfile/images"
 
-        s3_folder_autotag = f"temp/{file_base_name}/output_autotag"
+        s3_folder_autotag = f"{file_directory}/output_autotag"
         extract_images_from_excel(filename,figure_path,autotag_report_path,images_output_dir,bucket_name,s3_folder_autotag,file_key)
         
         logging.info(f'Filename : {file_key} | Processing completed for pdf file')
     except Exception as e:
-        logger.info(f"File: {file_base_name}, Status: Failed in First ECS task")
-        logger.info(f"Filename : {file_key} | Error: {e}")
+        # Extract base name from file_directory for error logging
+        base_name = file_directory.split('/')[-1] if 'file_directory' in locals() else 'unknown'
+        logger.info(f"File: {base_name}, Status: Failed in First ECS task")
+        logger.info(f"Filename : {file_key if 'file_key' in locals() else 'unknown'} | Error: {e}")
         sys.exit(1)
         
 if __name__ == "__main__":
