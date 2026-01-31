@@ -69,6 +69,11 @@ def split_pdf_into_pages(source_content, original_key, s3_client, bucket_name, p
     file_basename = original_key.split('/')[-1].rsplit('.', 1)[0]
     original_pdf_key = original_key  # Preserve the full original path
     
+    # Extract folder path (everything between 'pdf/' and filename)
+    # Example: 'pdf/batch1/subfolder/doc.pdf' -> 'batch1/subfolder'
+    key_without_prefix = original_key.replace('pdf/', '', 1)
+    folder_path = key_without_prefix.rsplit('/', 1)[0] if '/' in key_without_prefix else ''
+    
     chunks = []
 
     # Iterate through the PDF pages in chunks
@@ -86,7 +91,9 @@ def split_pdf_into_pages(source_content, original_key, s3_client, bucket_name, p
         # Create the filename and S3 key for this chunk
         chunk_index = start // pages_per_chunk + 1
         page_filename = f"{file_basename}_chunk_{chunk_index}.pdf"
-        s3_key = f"temp/{file_basename}/{page_filename}"
+        # Preserve folder structure in temp directory
+        folder_prefix = f"{folder_path}/" if folder_path else ""
+        s3_key = f"temp/{folder_prefix}{file_basename}/{page_filename}"
 
         # Upload the chunk to S3
         s3_client.upload_fileobj(
@@ -100,7 +107,8 @@ def split_pdf_into_pages(source_content, original_key, s3_client, bucket_name, p
             "s3_bucket": bucket_name,
             "s3_key": s3_key,
             "chunk_key": s3_key,  # Key for the chunk
-            "original_pdf_key": original_pdf_key  # Add original path
+            "original_pdf_key": original_pdf_key,  # Add original path
+            "folder_path": folder_path  # Add folder path for downstream processes
         })
 
     return chunks

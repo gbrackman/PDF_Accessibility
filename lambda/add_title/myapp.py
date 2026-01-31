@@ -56,9 +56,10 @@ def download_file_from_s3(bucket_name, file_key, local_path, filename):
     print(f"Filename: {filename}| Downloaded {file_key} from {bucket_name} to {local_path}")
 
 
-def save_to_s3(local_path, bucket_name, file_key):
+def save_to_s3(local_path, bucket_name, file_key, folder_path=""):
     s3 = boto3.client('s3')
-    save_path = f"result/COMPLIANT_{file_key}"
+    folder_prefix = f"{folder_path}/" if folder_path else ""
+    save_path = f"result/{folder_prefix}COMPLIANT_{file_key}"
     with open(local_path, "rb") as data:
         # Wrap the S3 upload_fileobj call with exponential_backoff_retry
         exponential_backoff_retry(
@@ -264,7 +265,15 @@ def lambda_handler(event, context):
             }
 
         try:
-            save_path = save_to_s3(local_path, file_info['bucket'], file_name)
+            # Extract folder_path from the merged_file_key
+            # Example: temp/batch1/doc/merged_doc.pdf -> batch1
+            merged_key = file_info['merged_file_key']
+            # Remove 'temp/' prefix and get the folder path
+            key_parts = merged_key.replace('temp/', '').split('/')
+            # If there are more than 2 parts (folder/filename/file), extract folder path
+            folder_path = '/'.join(key_parts[:-2]) if len(key_parts) > 2 else ''
+            
+            save_path = save_to_s3(local_path, file_info['bucket'], file_name, folder_path)
             print(f"(lambda_handler | Saved file to S3 at: {save_path})")
         except Exception as e:
             print(f"(lambda_handler | Failed to save file to S3: {e})")

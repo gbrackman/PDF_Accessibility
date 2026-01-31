@@ -23,11 +23,12 @@ def download_file_from_s3(bucket_name, file_key, local_path, original_pdf_key):
 
     print(f"Filename : {file_key} | Downloaded {file_key} from {bucket_name} to {local_path}")
 
-def save_to_s3(bucket_name, file_key):
+def save_to_s3(bucket_name, file_key, folder_path=""):
     s3 = boto3.client('s3')
     local_path = "/tmp/PDFAccessibilityChecker/result_before_remidiation.json"
     file_key_without_extension = os.path.splitext(file_key)[0]
-    bucket_save_path = f"temp/{file_key_without_extension}/accessability-report/{file_key_without_extension}_accessibility_report_before_remidiation.json"
+    folder_prefix = f"{folder_path}/" if folder_path else ""
+    bucket_save_path = f"temp/{folder_prefix}{file_key_without_extension}/accessability-report/{file_key_without_extension}_accessibility_report_before_remidiation.json"
     with open(local_path, "rb") as data:
         s3.upload_fileobj(data, bucket_name, bucket_save_path)
     print(f"Filename {file_key} | Uploaded {file_key} to {bucket_name} at path {bucket_save_path} before remidiation")
@@ -69,6 +70,7 @@ def lambda_handler(event, context):
     s3_bucket = event.get('s3_bucket', None)
     chunks = event.get('chunks', [])
     original_pdf_key = event.get('original_pdf_key', None)  # Get original path
+    folder_path = event.get('folder_path', '')  # Get folder path
     
     if chunks:
         first_chunk = chunks[0]
@@ -81,6 +83,7 @@ def lambda_handler(event, context):
     print("File basename:", file_basename)
     print("s3_bucket:", s3_bucket)
     print("Original PDF key:", original_pdf_key)  # Log the original path
+    print("Folder path:", folder_path)  # Log the folder path
     local_path = f"/tmp/{file_basename}"
     download_file_from_s3(s3_bucket, file_basename, local_path, original_pdf_key)
 
@@ -117,7 +120,7 @@ def lambda_handler(event, context):
         output_file_path_json = create_json_output_file_path()
         with open(output_file_path_json, "wb") as file:
             file.write(stream_report.get_input_stream())
-        bucket_save_path = save_to_s3(s3_bucket, file_basename)
+        bucket_save_path = save_to_s3(s3_bucket, file_basename, folder_path)
         print(f"Filename : {file_basename} | Saved accessibility report to {bucket_save_path}")
 
     except (ServiceApiException, ServiceUsageException, SdkException) as e:
