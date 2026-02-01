@@ -465,6 +465,30 @@ Task 2 can now access: $.s3_bucket, $.s3_key, $.chunk_key ✓
 
 ---
 
+### 7. `lambda/accessability_checker_after_remidiation/main.py`
+
+#### Change: Fix event structure parsing (Line ~72)
+```python
+# BEFORE (INCORRECT - looking for nested Payload key):
+payload = event.get('Payload', {})
+body = payload.get('body', {})
+s3_bucket = body.get('bucket')
+save_path = body.get('save_path')
+
+# AFTER (CORRECT - read directly from event):
+body = event.get('body', {})
+s3_bucket = body.get('bucket')
+save_path = body.get('save_path')
+```
+
+**Why this fix was needed:**
+- The `a11y_postcheck` Lambda receives the output from `add_title` Lambda directly
+- The `add_title` Lambda returns: `{"statusCode": 200, "body": {"bucket": "...", "save_path": "..."}}`
+- The original code expected an extra `Payload` wrapper that doesn't exist
+- The fix reads the `body` directly from the event
+
+---
+
 ## What Enhancement 2 Enables
 
 ### Before Enhancement 2:

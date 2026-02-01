@@ -71,9 +71,9 @@ def get_secret(basefilename):
 def lambda_handler(event, context):
     print("Received event:", event)
     
-    # Extracting nested values from the event
-    payload = event.get('Payload', {})
-    body = payload.get('body', {})
+    # Extract values directly from the event
+    # The event is the output from add_title Lambda: {"statusCode": 200, "body": {...}}
+    body = event.get('body', {})
     s3_bucket = body.get('bucket')
     save_path = body.get('save_path')
 
