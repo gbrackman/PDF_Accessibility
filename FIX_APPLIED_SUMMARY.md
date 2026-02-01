@@ -465,27 +465,65 @@ Task 2 can now access: $.s3_bucket, $.s3_key, $.chunk_key ✓
 
 ---
 
-### 7. `lambda/accessability_checker_after_remidiation/main.py`
+### 7. `lambda/add_title/myapp.py`
 
-#### Change: Fix event structure parsing (Line ~72)
+#### Change 1: Fix event parsing to receive Java Lambda output directly (Line ~203)
 ```python
 # BEFORE (INCORRECT - looking for nested Payload key):
+payload = event.get("Payload")
+file_info = parse_payload(payload)
+
+# AFTER (CORRECT - event is the Java Lambda String output):
+file_info = parse_payload(event)
+```
+
+---
+
+### 8. `app.py` (CDK Configuration)
+
+#### Change: Fix add_title_lambda_task payload configuration (Line ~270)
+```python
+# BEFORE (INCORRECT - wrapping in Payload):
+add_title_lambda_task = tasks.LambdaInvoke(
+    self, "Invoke Add Title Lambda",
+    lambda_function=add_title_lambda,
+    payload=sfn.TaskInput.from_object({
+        "Payload.$": "$"
+    })
+)
+
+# AFTER (CORRECT - pass state directly):
+add_title_lambda_task = tasks.LambdaInvoke(
+    self, "Invoke Add Title Lambda",
+    lambda_function=add_title_lambda,
+    payload=sfn.TaskInput.from_json_path_at("$")
+)
+```
+
+**Why these fixes were needed:**
+- The Java Lambda returns a String like: `"PDFs merged successfully.\nBucket: ...\nMerged File Key: ...\nMerged File Name: ..."`
+- With `output_path="$.Payload"`, this String becomes the input to `add_title`
+- The original code wrapped it in `{"Payload.$": "$"}`, creating `{"Payload": "string..."}` 
+- But `add_title` expected the String directly to parse with `parse_payload()`
+- The fix passes the String directly without wrapping
+
+---
+
+### 9. `lambda/accessability_checker_after_remidiation/main.py`
+
+#### Change: Keep Payload wrapper parsing (Line ~72)
+```python
+# CORRECT (event structure from LambdaInvoke):
 payload = event.get('Payload', {})
 body = payload.get('body', {})
 s3_bucket = body.get('bucket')
 save_path = body.get('save_path')
-
-# AFTER (CORRECT - read directly from event):
-body = event.get('body', {})
-s3_bucket = body.get('bucket')
-save_path = body.get('save_path')
 ```
 
-**Why this fix was needed:**
-- The `a11y_postcheck` Lambda receives the output from `add_title` Lambda directly
-- The `add_title` Lambda returns: `{"statusCode": 200, "body": {"bucket": "...", "save_path": "..."}}`
-- The original code expected an extra `Payload` wrapper that doesn't exist
-- The fix reads the `body` directly from the event
+**Why this is correct:**
+- The `a11y_postcheck` Lambda receives the wrapped Lambda response
+- Structure: `{"Payload": {"statusCode": 200, "body": {...}}, ...}`
+- Must extract `Payload` first, then `body`
 
 ---
 

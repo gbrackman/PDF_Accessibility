@@ -269,9 +269,7 @@ class PDFAccessibility(Stack):
         add_title_lambda_task = tasks.LambdaInvoke(
             self, "Invoke Add Title Lambda",
             lambda_function=add_title_lambda,
-            payload=sfn.TaskInput.from_object({
-                "Payload.$": "$"
-            })
+            payload=sfn.TaskInput.from_json_path_at("$")
         )
 
         # Add the necessary policy to the Lambda function's role
