@@ -269,7 +269,22 @@ const textFileKey = `${fileDirectory}/output_autotag/${fileKey}_temp_images_data
 const filebasename = fileDirectory.split('/').pop();
 ```
 
-#### Change 2: Update image path construction (Line ~455)
+#### Change 2: Fix database download path (Line ~440)
+```javascript
+// BEFORE:
+const getObjectParams = {
+    Bucket: bucketName,
+    Key: `temp/${textFileKey}`,  // BUG: textFileKey already includes 'temp/'
+};
+
+// AFTER:
+const getObjectParams = {
+    Bucket: bucketName,
+    Key: textFileKey,  // FIXED: Use textFileKey directly
+};
+```
+
+#### Change 3: Update image path construction (Line ~460)
 ```javascript
 // BEFORE:
 const splitKey = process.env.S3_FILE_KEY.split('/');
@@ -293,7 +308,7 @@ return {
 };
 ```
 
-#### Change 3: Update modifyPDF call (Line ~530)
+#### Change 4: Update modifyPDF call (Line ~535)
 ```javascript
 // BEFORE:
 await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", path.basename(process.env.S3_FILE_KEY), filebasename);
@@ -302,7 +317,7 @@ await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", pat
 await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", fileKey, filebasename);
 ```
 
-#### Change 4: Update PDF download path in modifyPDF (Line ~325)
+#### Change 5: Update PDF download path in modifyPDF (Line ~325)
 ```javascript
 // BEFORE:
 const downloadParams = {
@@ -317,7 +332,7 @@ const downloadParams = {
 };
 ```
 
-#### Change 5: Update PDF upload path in modifyPDF (Line ~395)
+#### Change 6: Update PDF upload path in modifyPDF (Line ~395)
 ```javascript
 // BEFORE:
 const uploadParams = {

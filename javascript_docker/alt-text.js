@@ -439,7 +439,7 @@ async function startProcess() {
    
         const getObjectParams = {
             Bucket: bucketName,
-            Key: `temp/${textFileKey}`,
+            Key: textFileKey,
         };
         const command = new GetObjectCommand(getObjectParams);
         const { Body } = await s3Client.send(command);
