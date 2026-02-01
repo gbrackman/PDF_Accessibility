@@ -240,7 +240,10 @@ class PDFAccessibility(Stack):
                                       payload=sfn.TaskInput.from_object({
         "fileNames.$": "$.chunks[*].s3_key"
                      }),
-                                      output_path=sfn.JsonPath.string_at("$.Payload"))
+                                      output_path=sfn.JsonPath.string_at("$.Payload"),
+                                      result_selector={
+                                          "java_output.$": "$"
+                                      })
         bucket.grant_read_write(java_lambda)
 
         # Define the Add Title Lambda function

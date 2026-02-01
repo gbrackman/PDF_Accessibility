@@ -201,8 +201,9 @@ def generate_title(extracted_text, current_title):
 
 def lambda_handler(event, context):
     try:
-        # Event is the Java Lambda's String output directly
-        file_info = parse_payload(event)
+        # Event is now wrapped: {"java_output": "string from Java Lambda"}
+        java_output = event.get("java_output", event)  # Fallback to event if not wrapped
+        file_info = parse_payload(java_output)
         print(f"(lambda_handler | Parsed file information: {file_info})")
 
         file_name = file_info['merged_file_name']

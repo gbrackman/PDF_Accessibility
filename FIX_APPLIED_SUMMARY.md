@@ -467,21 +467,43 @@ Task 2 can now access: $.s3_bucket, $.s3_key, $.chunk_key ✓
 
 ### 7. `lambda/add_title/myapp.py`
 
-#### Change 1: Fix event parsing to receive Java Lambda output directly (Line ~203)
+#### Change: Fix event parsing to extract Java Lambda output (Line ~203)
 ```python
-# BEFORE (INCORRECT - looking for nested Payload key):
-payload = event.get("Payload")
-file_info = parse_payload(payload)
-
-# AFTER (CORRECT - event is the Java Lambda String output):
+# BEFORE (INCORRECT - expected String directly):
 file_info = parse_payload(event)
+
+# AFTER (CORRECT - extract from wrapped structure):
+java_output = event.get("java_output", event)
+file_info = parse_payload(java_output)
 ```
 
 ---
 
 ### 8. `app.py` (CDK Configuration)
 
-#### Change: Fix add_title_lambda_task payload configuration (Line ~270)
+#### Change 1: Add result_selector to java_lambda_task (Line ~238)
+```python
+# BEFORE:
+java_lambda_task = tasks.LambdaInvoke(self, "Invoke Java Lambda",
+    lambda_function=java_lambda,
+    payload=sfn.TaskInput.from_object({
+        "fileNames.$": "$.chunks[*].s3_key"
+    }),
+    output_path=sfn.JsonPath.string_at("$.Payload"))
+
+# AFTER:
+java_lambda_task = tasks.LambdaInvoke(self, "Invoke Java Lambda",
+    lambda_function=java_lambda,
+    payload=sfn.TaskInput.from_object({
+        "fileNames.$": "$.chunks[*].s3_key"
+    }),
+    output_path=sfn.JsonPath.string_at("$.Payload"),
+    result_selector={
+        "java_output.$": "$"
+    })
+```
+
+#### Change 2: Fix add_title_lambda_task payload configuration (Line ~270)
 ```python
 # BEFORE (INCORRECT - wrapping in Payload):
 add_title_lambda_task = tasks.LambdaInvoke(
@@ -501,11 +523,10 @@ add_title_lambda_task = tasks.LambdaInvoke(
 ```
 
 **Why these fixes were needed:**
-- The Java Lambda returns a String like: `"PDFs merged successfully.\nBucket: ...\nMerged File Key: ...\nMerged File Name: ..."`
-- With `output_path="$.Payload"`, this String becomes the input to `add_title`
-- The original code wrapped it in `{"Payload.$": "$"}`, creating `{"Payload": "string..."}` 
-- But `add_title` expected the String directly to parse with `parse_payload()`
-- The fix passes the String directly without wrapping
+- The Java Lambda returns a plain String, not JSON
+- Step Functions can't pass a plain String to Lambda (must be JSON)
+- `result_selector` wraps the String in JSON: `{"java_output": "string..."}`
+- `add_title` extracts the String from `java_output` and parses it
 
 ---
 
