@@ -575,6 +575,36 @@ if chunks:
 
 ---
 
+### 11. `lambda/java_lambda/PDFMergerLambda/src/main/java/com/example/App.java`
+
+#### Change: Preserve folder structure in merged PDF output path (Line ~62)
+```java
+// BEFORE (INCORRECT - loses folder structure):
+String baseFileName = pdfKeys.get(0).substring(pdfKeys.get(0).lastIndexOf('/') + 1).replaceAll("_chunk_\\d+", "");
+String mergedFilePath = "/tmp/merged_" + baseFileName;
+String outputKey = String.format("temp/%s/merged_%s", baseFileName.replace(".pdf", ""), baseFileName);
+// Results in: temp/Sample-Syllabus-3/merged_Sample-Syllabus-3.pdf (missing Sample-PDFs folder)
+
+// AFTER (CORRECT - preserves folder structure):
+String baseFileName = pdfKeys.get(0).substring(pdfKeys.get(0).lastIndexOf('/') + 1).replaceAll("_chunk_\\d+", "");
+
+// Extract directory path from first chunk key to preserve folder structure
+String firstKey = pdfKeys.get(0);
+String directory = firstKey.substring(0, firstKey.lastIndexOf('/') + 1);
+
+String mergedFilePath = "/tmp/merged_" + baseFileName;
+String outputKey = directory + "merged_" + baseFileName;
+// Results in: temp/Sample-PDFs/Sample-Syllabus-3/merged_Sample-Syllabus-3.pdf (correct!)
+```
+
+**Why this fix was needed:**
+- The original code constructed the output path using only the base filename
+- This lost the folder structure (e.g., `Sample-PDFs/`)
+- The fix extracts the full directory path from the input chunk key
+- Now the merged PDF is saved in the same folder as the chunks
+
+---
+
 ## What Enhancement 2 Enables
 
 ### Before Enhancement 2:
