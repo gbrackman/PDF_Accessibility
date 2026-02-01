@@ -141,7 +141,7 @@ class PDFAccessibility(Stack):
                                       cluster=cluster,
                                       task_definition=task_definition_1,
                                       assign_public_ip=False,
-                                      
+                                      result_path="$.ecs_task_1_result",
                                       container_overrides=[tasks.ContainerOverride(
                                        container_definition = container_definition_1,
                                           environment=[

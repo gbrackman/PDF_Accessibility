@@ -340,7 +340,32 @@ const uploadParams = {
 
 ### 6. `app.py` (CDK Configuration)
 
-#### Change: Fix ECS Task 2 environment variable passing (Line ~240)
+#### Change 1: Add result_path to ECS Task 1 to preserve input (Line ~140)
+```python
+# BEFORE:
+ecs_task_1 = tasks.EcsRunTask(self, "ECS RunTask",
+    integration_pattern=sfn.IntegrationPattern.RUN_JOB,
+    cluster=cluster,
+    task_definition=task_definition_1,
+    assign_public_ip=False,
+    # No result_path - output replaces input
+    container_overrides=[...],
+    ...
+)
+
+# AFTER:
+ecs_task_1 = tasks.EcsRunTask(self, "ECS RunTask",
+    integration_pattern=sfn.IntegrationPattern.RUN_JOB,
+    cluster=cluster,
+    task_definition=task_definition_1,
+    assign_public_ip=False,
+    result_path="$.ecs_task_1_result",  # Store output separately, preserve input
+    container_overrides=[...],
+    ...
+)
+```
+
+#### Change 2: Fix ECS Task 2 environment variable passing (Line ~185)
 ```python
 # BEFORE (INCORRECT - trying to read from Task 1 output):
 ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
@@ -365,7 +390,7 @@ ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
     ...
 )
 
-# AFTER (CORRECT - reading from Map iteration input):
+# AFTER (CORRECT - reading from preserved Map iteration input):
 ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
     ...
     container_overrides=[tasks.ContainerOverride(
@@ -393,12 +418,35 @@ ecs_task_2 = tasks.EcsRunTask(self, "ECS RunTask (1)",
 )
 ```
 
-**Why this fix was needed:**
-- ECS Task 2 runs AFTER Task 1 in the same Map iteration
-- It needs to receive the same chunk data that Task 1 received
-- The original code tried to extract values from Task 1's output structure, which doesn't contain these values
-- The correct approach is to read directly from the Map iteration input (the chunk object)
-- This ensures both tasks receive consistent S3 paths: `s3_bucket`, `s3_key`, and `chunk_key`
+**Why these fixes were needed:**
+
+1. **result_path on Task 1**: By default, when an ECS task completes, its output (task metadata) replaces the entire input. Adding `result_path="$.ecs_task_1_result"` tells Step Functions to store the task output in a new field called `ecs_task_1_result` while preserving the original chunk data (`s3_bucket`, `s3_key`, `chunk_key`, etc.).
+
+2. **Direct access in Task 2**: Since Task 1 now preserves the original input, Task 2 can directly access the chunk data fields (`$.s3_bucket`, `$.s3_key`, `$.chunk_key`) instead of trying to extract them from Task 1's output structure.
+
+**Data flow after fix:**
+```
+Map iteration input:
+{
+  "s3_bucket": "...",
+  "s3_key": "temp/Sample-PDFs/doc/doc_chunk_1.pdf",
+  "chunk_key": "temp/Sample-PDFs/doc/doc_chunk_1.pdf",
+  "original_pdf_key": "pdf/Sample-PDFs/doc.pdf",
+  "folder_path": "Sample-PDFs"
+}
+
+After Task 1 (with result_path):
+{
+  "s3_bucket": "...",           ← Original preserved
+  "s3_key": "...",              ← Original preserved
+  "chunk_key": "...",           ← Original preserved
+  "original_pdf_key": "...",    ← Original preserved
+  "folder_path": "...",         ← Original preserved
+  "ecs_task_1_result": {...}    ← Task 1 output stored here
+}
+
+Task 2 can now access: $.s3_bucket, $.s3_key, $.chunk_key ✓
+```
 
 ---
 
