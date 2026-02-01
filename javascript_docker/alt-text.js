@@ -312,10 +312,12 @@ async function generateAltTextForLink(url) {
  * @param {string} inputKey - The key (path) of the input PDF in the S3 bucket.
  * @param {string} outputKey - The key (path) of the output PDF in the S3 bucket.
  * @param {string} filebasename - The base name of the file being processed.
+ * @param {string} fileDirectory - The directory path for the file in S3.
+ * @param {string} fileKey - The filename of the chunk being processed.
  * @returns {Promise<void>} - A promise that resolves when the PDF has been modified and uploaded.
  * @throws {Error} - Throws an error if any step in the PDF processing or S3 operations fails.
  */
-async function modifyPDF(zipped, bucketName, inputKey, outputKey, filebasename) {
+async function modifyPDF(zipped, bucketName, inputKey, outputKey, filebasename, fileDirectory, fileKey) {
     const downloadPath = path.join('/tmp', path.basename(inputKey)); // Download to /tmp directory
 
     try {
@@ -533,7 +535,7 @@ async function startProcess() {
         let zipped = imageObjects.map((element, index) => [element.id, descriptions[index]]);
         logger.info(`Filename: ${filebasename} | zipped: ${zipped}`);
 
-        await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", fileKey, filebasename);
+        await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", fileKey, filebasename, fileDirectory, fileKey);
         logger.info(`Filename: ${filebasename} | PDF modification complete`);
 
     } catch (error) {

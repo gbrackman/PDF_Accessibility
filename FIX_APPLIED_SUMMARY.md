@@ -777,3 +777,95 @@ To deploy these changes:
 **Enhancement 1 Applied**: January 29, 2026  
 **Enhancement 2 Applied**: January 31, 2026  
 **Status**: Complete - Ready for deployment and testing
+
+
+---
+
+# Bug Fix: JavaScript ECS Task Variable Scoping Issue
+
+## Problem
+The Step Function was failing at the `a11y_postcheck` step with the error:
+```
+ValueError: Missing required inputs: 's3_bucket' or 'save_path'
+```
+
+The root cause was traced back to the JavaScript ECS task (`alt-text.js`) which was failing to upload the `FINAL_` prefixed PDF files due to a variable scoping bug.
+
+## Root Cause Analysis
+
+In `javascript_docker/alt-text.js`, the `modifyPDF` function was using `fileDirectory` and `fileKey` variables that were defined in `startProcess()` but not passed as parameters to `modifyPDF()`.
+
+**Before (Bug):**
+```javascript
+// In startProcess() - variables defined here
+const fileDirectory = s3ChunkKey.split('/').slice(0, -1).join('/');
+const fileKey = s3ChunkKey.split('/').pop();
+
+// Later in startProcess()
+await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", fileKey, filebasename);
+
+// In modifyPDF() - variables undefined here!
+async function modifyPDF(zipped, bucketName, inputKey, outputKey, filebasename) {
+    // fileDirectory and fileKey are UNDEFINED here
+    Key: `${fileDirectory}/output_autotag/COMPLIANT_${fileKey}`,  // Results in: undefined/output_autotag/COMPLIANT_undefined
+}
+```
+
+This caused the S3 download to fail with an invalid key, which caused the ECS task to fail, which meant no `FINAL_` files were created, which caused the Java Lambda to fail when trying to download them, which caused `add_title` to fail parsing the error response, which finally caused `a11y_postcheck` to receive invalid input.
+
+## Solution
+
+Pass `fileDirectory` and `fileKey` as parameters to the `modifyPDF` function.
+
+### File Modified: `javascript_docker/alt-text.js`
+
+#### Change 1: Update modifyPDF function signature (Line ~320)
+```javascript
+// BEFORE:
+async function modifyPDF(zipped, bucketName, inputKey, outputKey, filebasename) {
+
+// AFTER:
+async function modifyPDF(zipped, bucketName, inputKey, outputKey, filebasename, fileDirectory, fileKey) {
+```
+
+#### Change 2: Update modifyPDF call in startProcess (Line ~538)
+```javascript
+// BEFORE:
+await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", fileKey, filebasename);
+
+// AFTER:
+await modifyPDF(combinedResults, bucketName, "output_autotag/COMPLIANT.pdf", fileKey, filebasename, fileDirectory, fileKey);
+```
+
+## Error Chain Explained
+
+1. **ECS Task 2 (alt-text.js)** fails to upload `FINAL_` files due to undefined variables
+2. **Java Lambda** tries to download `FINAL_` files that don't exist → returns "Failed to merge PDFs."
+3. **add_title Lambda** tries to parse "Failed to merge PDFs." → can't find `merged_file_name` → returns error
+4. **a11y_postcheck Lambda** receives error response without `bucket` or `save_path` → raises ValueError
+
+## Deployment
+
+To deploy this fix:
+
+1. **Rebuild the Docker image:**
+   ```bash
+   cd javascript_docker
+   docker build -t alt-text-container .
+   ```
+
+2. **Deploy via CDK:**
+   ```bash
+   cdk deploy PDFAccessibility --require-approval never
+   ```
+
+   Or use the deployment script:
+   ```bash
+   ./deploy.sh
+   # Select PDF-to-PDF solution when prompted
+   ```
+
+---
+
+**Bug Fix Applied**: February 1, 2026
+**Status**: Ready for deployment and testing
