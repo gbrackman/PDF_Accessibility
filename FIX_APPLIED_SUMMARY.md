@@ -869,3 +869,143 @@ To deploy this fix:
 
 **Bug Fix Applied**: February 1, 2026
 **Status**: Ready for deployment and testing
+
+
+---
+
+# Bug Fix: Folder Path Extraction in Final Output Files
+
+## Problem
+After the JavaScript scoping fix, the Step Functions completed successfully, but some output files were not preserving the correct folder structure:
+
+**Files with CORRECT structure:**
+- `temp/Sample-PDFs/Sample-Syllabus-1/accessability-report/` ✓
+- `temp/Sample-PDFs/Sample-Syllabus-1/FINAL_*.pdf` ✓
+- `temp/Sample-PDFs/Sample-Syllabus-1/output_autotag/` ✓
+
+**Files with INCORRECT structure:**
+- `temp/Sample-Syllabus-1/merged_Sample-Syllabus-1.pdf` ✗ (missing Sample-PDFs folder)
+- `result/COMPLIANT_Sample-Syllabus-1.pdf` ✗ (missing Sample-PDFs folder)
+- Duplicate accessibility reports in wrong locations
+
+## Root Cause
+
+### Issue 1: add_title Lambda
+The folder path extraction logic was removing too many path components:
+
+```python
+# BEFORE (INCORRECT):
+key_parts = merged_key.replace('temp/', '').split('/')
+folder_path = '/'.join(key_parts[:-2]) if len(key_parts) > 2 else ''
+# For temp/Sample-PDFs/Sample-Syllabus-1/merged_Sample-Syllabus-1.pdf
+# Result: Sample-PDFs (missing Sample-Syllabus-1)
+```
+
+### Issue 2: a11y_postcheck Lambda
+The `save_to_s3` function didn't accept or use a `folder_path` parameter, so it couldn't preserve the folder structure.
+
+## Solution
+
+### File Modified: `lambda/add_title/myapp.py`
+
+#### Change: Fix folder path extraction (Line ~268)
+```python
+# BEFORE:
+key_parts = merged_key.replace('temp/', '').split('/')
+folder_path = '/'.join(key_parts[:-2]) if len(key_parts) > 2 else ''
+
+# AFTER:
+key_parts = merged_key.replace('temp/', '').split('/')
+# Remove only the filename (last part), keep all folder parts
+folder_path = '/'.join(key_parts[:-1]) if len(key_parts) > 1 else ''
+print(f"(lambda_handler | Extracted folder_path: {folder_path} from merged_key: {merged_key})")
+```
+
+**Example:**
+- Input: `temp/Sample-PDFs/Sample-Syllabus-1/merged_Sample-Syllabus-1.pdf`
+- After removing `temp/`: `Sample-PDFs/Sample-Syllabus-1/merged_Sample-Syllabus-1.pdf`
+- Split: `['Sample-PDFs', 'Sample-Syllabus-1', 'merged_Sample-Syllabus-1.pdf']`
+- `key_parts[:-1]`: `['Sample-PDFs', 'Sample-Syllabus-1']` ✓
+- Result: `folder_path = 'Sample-PDFs/Sample-Syllabus-1'` ✓
+
+### File Modified: `lambda/accessability_checker_after_remidiation/main.py`
+
+#### Change 1: Update save_to_s3 to accept folder_path (Line ~28)
+```python
+# BEFORE:
+def save_to_s3(bucket_name, file_key):
+    bucket_save_path = f"temp/{file_key_without_compliant}/accessability-report/..."
+
+# AFTER:
+def save_to_s3(bucket_name, file_key, folder_path=""):
+    folder_prefix = f"{folder_path}/" if folder_path else ""
+    bucket_save_path = f"temp/{folder_prefix}{file_key_without_compliant}/accessability-report/..."
+```
+
+#### Change 2: Extract folder_path from save_path (Line ~93)
+```python
+# AFTER file_basename extraction, ADD:
+# Extract folder_path from save_path
+# Example: result/Sample-PDFs/Sample-Syllabus-1/COMPLIANT_Sample-Syllabus-1.pdf -> Sample-PDFs/Sample-Syllabus-1
+save_path_parts = save_path.replace('result/', '').split('/')
+folder_path = '/'.join(save_path_parts[:-1]) if len(save_path_parts) > 1 else ''
+print(f"Extracted folder_path: {folder_path} from save_path: {save_path}")
+```
+
+#### Change 3: Pass folder_path to save_to_s3 (Line ~136)
+```python
+# BEFORE:
+bucket_save_path = save_to_s3(s3_bucket, file_basename)
+
+# AFTER:
+bucket_save_path = save_to_s3(s3_bucket, file_basename, folder_path)
+```
+
+## Expected Output Structure
+
+After these fixes, all files should preserve the folder structure:
+
+```
+pdf/Sample-PDFs/Sample-Syllabus-1.pdf  (input)
+
+temp/Sample-PDFs/Sample-Syllabus-1/
+├── Sample-Syllabus-1_chunk_1.pdf
+├── output_autotag/
+│   ├── COMPLIANT_Sample-Syllabus-1_chunk_1.pdf
+│   ├── Sample-Syllabus-1_chunk_1.pdf_temp_images_data.db
+│   └── images/...
+├── FINAL_Sample-Syllabus-1_chunk_1.pdf
+├── merged_Sample-Syllabus-1.pdf                     ✓ NOW CORRECT
+└── accessability-report/
+    ├── Sample-Syllabus-1_accessibility_report_before_remidiation.json
+    └── COMPLIANT_Sample-Syllabus-1_accessibility_report_after_remidiation.json  ✓ NOW CORRECT
+
+result/Sample-PDFs/Sample-Syllabus-1/
+└── COMPLIANT_Sample-Syllabus-1.pdf                  ✓ NOW CORRECT
+```
+
+## Deployment
+
+```bash
+# Commit and push changes
+git add lambda/add_title/myapp.py
+git add lambda/accessability_checker_after_remidiation/main.py
+git add FIX_APPLIED_SUMMARY.md
+
+git commit -m "Fix folder path extraction in final output files
+
+- Fixed add_title Lambda to preserve full folder path
+- Updated a11y_postcheck Lambda to extract and use folder path
+- All output files now maintain correct folder structure"
+
+git push origin main
+
+# Deploy
+./deploy.sh
+# Select PDF-to-PDF solution
+```
+
+---
+
+**Bug Fix Applied**: February 1, 2026
+**Status**: Ready for deployment and testing

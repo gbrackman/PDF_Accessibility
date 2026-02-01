@@ -267,13 +267,14 @@ def lambda_handler(event, context):
 
         try:
             # Extract folder_path from the merged_file_key
-            # Example: temp/batch1/doc/merged_doc.pdf -> batch1
+            # Example: temp/Sample-PDFs/Sample-Syllabus-1/merged_Sample-Syllabus-1.pdf -> Sample-PDFs/Sample-Syllabus-1
             merged_key = file_info['merged_file_key']
-            # Remove 'temp/' prefix and get the folder path
+            # Remove 'temp/' prefix and get the folder path (everything except the filename)
             key_parts = merged_key.replace('temp/', '').split('/')
-            # If there are more than 2 parts (folder/filename/file), extract folder path
-            folder_path = '/'.join(key_parts[:-2]) if len(key_parts) > 2 else ''
+            # Remove only the filename (last part), keep all folder parts
+            folder_path = '/'.join(key_parts[:-1]) if len(key_parts) > 1 else ''
             
+            print(f"(lambda_handler | Extracted folder_path: {folder_path} from merged_key: {merged_key})")
             save_path = save_to_s3(local_path, file_info['bucket'], file_name, folder_path)
             print(f"(lambda_handler | Saved file to S3 at: {save_path})")
         except Exception as e:
