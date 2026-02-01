@@ -240,9 +240,8 @@ class PDFAccessibility(Stack):
                                       payload=sfn.TaskInput.from_object({
         "fileNames.$": "$.chunks[*].s3_key"
                      }),
-                                      output_path=sfn.JsonPath.string_at("$.Payload"),
                                       result_selector={
-                                          "java_output.$": "$"
+                                          "java_output.$": "$.Payload"
                                       })
         bucket.grant_read_write(java_lambda)
 

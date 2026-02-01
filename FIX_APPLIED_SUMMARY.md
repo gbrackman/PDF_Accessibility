@@ -497,13 +497,18 @@ java_lambda_task = tasks.LambdaInvoke(self, "Invoke Java Lambda",
     payload=sfn.TaskInput.from_object({
         "fileNames.$": "$.chunks[*].s3_key"
     }),
-    output_path=sfn.JsonPath.string_at("$.Payload"),
     result_selector={
-        "java_output.$": "$"
+        "java_output.$": "$.Payload"
     })
 ```
 
-#### Change 2: Fix add_title_lambda_task payload configuration (Line ~270)
+**Why this fix was needed:**
+- Step Functions cannot pass plain Strings between tasks (must be JSON)
+- The Java Lambda returns a plain String
+- `result_selector` wraps it in JSON: `{"java_output": "string..."}`
+- Removed `output_path` because `result_selector` already shapes the output
+
+---
 ```python
 # BEFORE (INCORRECT - wrapping in Payload):
 add_title_lambda_task = tasks.LambdaInvoke(
@@ -545,6 +550,28 @@ save_path = body.get('save_path')
 - The `a11y_postcheck` Lambda receives the wrapped Lambda response
 - Structure: `{"Payload": {"statusCode": 200, "body": {...}}, ...}`
 - Must extract `Payload` first, then `body`
+
+---
+
+### 10. `lambda/accessibility_checker_before_remidiation/main.py`
+
+#### Change: Extract folder_path from first chunk (Line ~73)
+```python
+# BEFORE (INCORRECT - folder_path not at top level):
+folder_path = event.get('folder_path', '')
+
+# AFTER (CORRECT - extract from first chunk):
+folder_path = ''
+if chunks:
+    first_chunk = chunks[0]
+    s3_key = first_chunk.get('s3_key', None)
+    folder_path = first_chunk.get('folder_path', '')  # Extract from chunk
+```
+
+**Why this fix was needed:**
+- The event structure has `folder_path` inside each chunk object, not at the top level
+- The Lambda needs to extract it from `chunks[0].folder_path`
+- This ensures accessibility reports are saved with the correct folder structure
 
 ---
 

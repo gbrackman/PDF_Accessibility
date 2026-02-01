@@ -70,11 +70,12 @@ def lambda_handler(event, context):
     s3_bucket = event.get('s3_bucket', None)
     chunks = event.get('chunks', [])
     original_pdf_key = event.get('original_pdf_key', None)  # Get original path
-    folder_path = event.get('folder_path', '')  # Get folder path
+    folder_path = ''  # Initialize folder_path
     
     if chunks:
         first_chunk = chunks[0]
         s3_key = first_chunk.get('s3_key', None)
+        folder_path = first_chunk.get('folder_path', '')  # Extract from first chunk
         if s3_key:
             import os
             file_basename = os.path.basename(s3_key)
