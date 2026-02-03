@@ -1009,3 +1009,70 @@ git push origin main
 
 **Bug Fix Applied**: February 1, 2026
 **Status**: Ready for deployment and testing
+
+
+---
+
+# Debug: Java Lambda Folder Path Issue Investigation
+
+## Problem
+After fixing the `add_title` Lambda folder path extraction, the output files are still in the wrong location:
+- Expected: `result/Sample-PDFs/COMPLIANT_Sample-Syllabus-1.pdf`
+- Actual: `result/Sample-Syllabus-1/COMPLIANT_Sample-Syllabus-1.pdf`
+
+## Investigation Results
+
+**Verified correct behavior:**
+- ✓ split_pdf creates chunks at: `temp/Sample-PDFs/Sample-Syllabus-1/Sample-Syllabus-1_chunk_1.pdf`
+- ✓ ECS tasks process files at correct locations
+- ✓ add_title Lambda code is updated with correct logic
+
+**Found the issue:**
+- Java Lambda receives correct input: `temp/Sample-PDFs/Sample-Syllabus-1/FINAL_Sample-Syllabus-1_chunk_1.pdf`
+- But uploads merged file to: `temp/Sample-Syllabus-1/merged_Sample-Syllabus-1.pdf` (missing `Sample-PDFs`)
+- Returns wrong path to add_title Lambda: `temp/Sample-Syllabus-1/merged_Sample-Syllabus-1.pdf`
+
+## Debugging Step
+
+### File Modified: `lambda/java_lambda/PDFMergerLambda/src/main/java/com/example/App.java`
+
+#### Change: Add debug logging (Line ~44)
+```java
+// BEFORE:
+List<String> pdfKeys = (List<String>) input.get("fileNames");
+if (pdfKeys == null || pdfKeys.isEmpty()) {
+    return "No files to merge.";
+}
+
+// AFTER:
+List<String> pdfKeys = (List<String>) input.get("fileNames");
+if (pdfKeys == null || pdfKeys.isEmpty()) {
+    return "No files to merge.";
+}
+
+// Debug: Print what we received
+System.out.println("DEBUG: Received pdfKeys: " + pdfKeys);
+System.out.println("DEBUG: First key: " + pdfKeys.get(0));
+```
+
+## Next Steps
+
+After deployment, check Java Lambda logs for DEBUG output to see what input it's actually receiving from the Step Function. This will reveal if:
+1. The Step Function is passing incorrect paths
+2. The Java Lambda is extracting the directory incorrectly
+3. There's a mismatch between what split_pdf creates and what the Step Function passes
+
+## Deployment
+
+```bash
+git add lambda/java_lambda/PDFMergerLambda/src/main/java/com/example/App.java
+git add FIX_APPLIED_SUMMARY.md
+git commit -m "Add debug logging to Java Lambda to investigate folder path issue"
+git push origin main
+./deploy.sh
+```
+
+---
+
+**Debug Step Added**: February 1, 2026
+**Status**: Investigating - awaiting debug output
