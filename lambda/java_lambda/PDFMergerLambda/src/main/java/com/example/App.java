@@ -45,6 +45,10 @@ public class App implements RequestHandler<Map<String, Object>, String> {
             return "No files to merge.";
         }
         
+        // Debug: Print what we received
+        System.out.println("DEBUG: Received pdfKeys: " + pdfKeys);
+        System.out.println("DEBUG: First key: " + pdfKeys.get(0));
+        
         List<String> modifiedPdfKeys = pdfKeys.stream()
             .map(key -> {
                 int lastSlashIndex = key.lastIndexOf('/');
