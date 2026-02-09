@@ -91,7 +91,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 s3 = boto3.client('s3')
 
-def download_file_from_s3(bucket_name,file_base_name, file_key, local_path):
+def download_file_from_s3(bucket_name, file_base_name, file_key, local_path, folder_prefix=''):
     """
     Download a file from an S3 bucket.
     
@@ -100,12 +100,13 @@ def download_file_from_s3(bucket_name,file_base_name, file_key, local_path):
         file_base_name (str): The base name of the file.
         file_key (str): The key (path) of the file in the S3 bucket.
         local_path (str): The local path where the file will be saved.
+        folder_prefix (str): The folder prefix for nested folder uploads (default empty string).
     """
     logging.info(f"File key in the download_file_from_s3: {file_key}")
-    s3.download_file(bucket_name, f"temp/{file_base_name}/{file_key}", local_path)
+    s3.download_file(bucket_name, f"temp/{folder_prefix}{file_base_name}/{file_key}", local_path)
     logging.info(f"Downloaded {file_key} from {bucket_name} to {local_path}")
 
-def save_to_s3(filename, bucket_name, folder_name,file_basename, file_key):
+def save_to_s3(filename, bucket_name, folder_name, file_basename, file_key, folder_prefix=''):
     """
     Uploads a file to an S3 bucket.
     
@@ -115,10 +116,11 @@ def save_to_s3(filename, bucket_name, folder_name,file_basename, file_key):
         folder_name (str): The folder where the file will be uploaded.
         file_basename (str): The base name of the file.
         file_key (str): The key (path) where the file will be uploaded.
+        folder_prefix (str): The folder prefix for nested folder uploads (default empty string).
     """
 
     with open(filename, "rb") as data:
-        s3.upload_fileobj(data, bucket_name, f"temp/{file_basename}/{folder_name}/COMPLIANT_{file_key}")
+        s3.upload_fileobj(data, bucket_name, f"temp/{folder_prefix}{file_basename}/{folder_name}/COMPLIANT_{file_key}")
 
 
 def get_secret(basefilename):
@@ -644,21 +646,25 @@ def main():
     try:    
         bucket_name = os.getenv('S3_BUCKET_NAME')
         s3_file_key = os.getenv('S3_FILE_KEY')
+        folder_prefix = os.getenv('FOLDER_PREFIX', '')
         
         if not bucket_name or not s3_file_key:
             logging.error("Error: S3_BUCKET_NAME and S3_FILE_KEY environment variables are required.")
             sys.exit(1)
         
-        file_key = s3_file_key.split('/')[2]
-        file_base_name = s3_file_key.split('/')[1]
-        logging.info(f'Filename : {file_key} | Bucket Name: {bucket_name}')
+        # Strip "temp/" and folder_prefix from the S3 key to get {basename}/{chunk}
+        remainder = s3_file_key[len("temp/") + len(folder_prefix):]
+        parts = remainder.split('/')
+        file_base_name = parts[0]  # basename
+        file_key = parts[1]        # chunk filename
+        logging.info(f'Filename : {file_key} | Bucket Name: {bucket_name} | Folder Prefix: {folder_prefix}')
 
         # Define the local file path where the file will be saved
         local_file_path = os.path.basename(file_key)  # Save the file with its original name
         
         # Download the file from S3
         logging.info(f'Filename : {file_key} | Downloading file from S3...')
-        download_file_from_s3(bucket_name, file_base_name, file_key, local_file_path)
+        download_file_from_s3(bucket_name, file_base_name, file_key, local_file_path, folder_prefix)
 
         base_filename = os.path.basename(local_file_path)
         filename = "COMPLIANT_" + base_filename
@@ -698,7 +704,7 @@ def main():
         pdf_document.close()
         
         logging.info(f'Filename : {file_key} | Uploading processed PDF to S3...')
-        save_to_s3(filename, bucket_name, "output_autotag", file_base_name, file_key)
+        save_to_s3(filename, bucket_name, "output_autotag", file_base_name, file_key, folder_prefix)
 
         logging.info(f"PDF saved with updated metadata and TOC. File location: COMPLIANT_{file_key}")
 
@@ -706,7 +712,7 @@ def main():
         autotag_report_path = f"output/AutotagPDF/{filename}.xlsx"
         images_output_dir = "output/zipfile/images"
 
-        s3_folder_autotag = f"temp/{file_base_name}/output_autotag"
+        s3_folder_autotag = f"temp/{folder_prefix}{file_base_name}/output_autotag"
         
         logging.info(f'Filename : {file_key} | Extracting and uploading images...')
         extract_images_from_excel(filename, figure_path, autotag_report_path, images_output_dir, bucket_name, s3_folder_autotag, file_key)

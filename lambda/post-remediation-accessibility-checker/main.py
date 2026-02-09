@@ -24,14 +24,30 @@ def download_file_from_s3(bucket_name,file_key, save_path, local_path):
 
     print(f"Filename : {file_key} | Downloaded {file_key} from {bucket_name} to {local_path}")
 
-def save_to_s3(bucket_name, file_key):
+def extract_folder_prefix(save_path):
+    """
+    Extract folder prefix from the save_path produced by the Title Generator.
+    
+    The save_path has the format: result/{folder_prefix}COMPLIANT_{filename}
+    The folder prefix is everything between "result/" and "COMPLIANT_".
+    
+    Examples:
+        "result/folder1/folder2/COMPLIANT_myfile.pdf" -> "folder1/folder2/"
+        "result/COMPLIANT_myfile.pdf" -> ""
+    """
+    path_after_result = save_path[len("result/"):]
+    compliant_index = path_after_result.index("COMPLIANT_")
+    return path_after_result[:compliant_index]
+
+
+def save_to_s3(bucket_name, file_key, folder_prefix=''):
     s3 = boto3.client('s3')
     local_path = "/tmp/PDFAccessibilityChecker/result_after_remediation.json"
 
     file_key_without_extension = os.path.splitext(file_key)[0]
     file_key_without_compliant = file_key_without_extension.replace("COMPLIANT_", "", 1)
     
-    bucket_save_path = f"temp/{file_key_without_compliant}/accessability-report/{file_key_without_extension}_accessibility_report_after_remidiation.json"
+    bucket_save_path = f"temp/{folder_prefix}{file_key_without_compliant}/accessability-report/{file_key_without_extension}_accessibility_report_after_remidiation.json"
     with open(local_path, "rb") as data:
         s3.upload_fileobj(data, bucket_name, bucket_save_path)
     print(f"Filename {file_key} | Uploaded {file_key} to {bucket_name} at path {bucket_save_path} after remidiation")
@@ -131,7 +147,8 @@ def lambda_handler(event, context):
         with open(output_file_path_json, "wb") as file:
             file.write(stream_report.get_input_stream())
 
-        bucket_save_path = save_to_s3(s3_bucket, file_basename)
+        folder_prefix = extract_folder_prefix(save_path)
+        bucket_save_path = save_to_s3(s3_bucket, file_basename, folder_prefix)
         print(f"Filename : {file_basename} | Saved accessibility report to {bucket_save_path}")
 
     except (ServiceApiException, ServiceUsageException, SdkException) as e:

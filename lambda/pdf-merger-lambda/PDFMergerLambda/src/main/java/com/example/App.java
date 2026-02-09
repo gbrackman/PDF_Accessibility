@@ -13,6 +13,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Result of PDF Merger path construction, containing the base file name and output key.
+ */
+class MergerPathResult {
+    final String baseFileName;
+    final String outputKey;
+
+    MergerPathResult(String baseFileName, String outputKey) {
+        this.baseFileName = baseFileName;
+        this.outputKey = outputKey;
+    }
+}
+
 
 
 /**
@@ -24,6 +37,39 @@ import java.util.stream.Collectors;
 public class App implements RequestHandler<Map<String, Object>, String> {
 
     private final AmazonS3 s3Client = AmazonS3ClientBuilder.defaultClient();
+
+    /**
+     * Constructs the output path for the merged PDF.
+     *
+     * Given a folder prefix and a list of chunk keys, extracts the base file name
+     * from the first chunk key and constructs the output key as:
+     * temp/{folderPrefix}{baseFileNameWithoutExtension}/merged_{baseFileName}
+     *
+     * @param folderPrefix The folder prefix (e.g., "folder1/folder2/" or "" for flat uploads)
+     * @param pdfKeys The list of chunk S3 keys
+     * @return A MergerPathResult containing the baseFileName and outputKey
+     */
+    static MergerPathResult constructOutputPath(String folderPrefix, List<String> pdfKeys) {
+        if (folderPrefix == null) {
+            folderPrefix = "";
+        }
+        String baseFileName = pdfKeys.get(0).substring(pdfKeys.get(0).lastIndexOf('/') + 1).replaceAll("_chunk_\\d+", "");
+        String outputKey = String.format("temp/%s%s/merged_%s", folderPrefix, baseFileName.replace(".pdf", ""), baseFileName);
+        return new MergerPathResult(baseFileName, outputKey);
+    }
+
+    /**
+     * Constructs the return string for the PDF Merger Lambda.
+     *
+     * @param bucketName The S3 bucket name
+     * @param outputKey The output key for the merged PDF
+     * @param baseFileName The base file name
+     * @return The formatted return string
+     */
+    static String constructReturnString(String bucketName, String outputKey, String baseFileName) {
+        return String.format("PDFs merged successfully.\nBucket: %s\nMerged File Key: %s\nMerged File Name: %s",
+                         bucketName, outputKey, baseFileName);
+    }
 
     /**
      * Handles the Lambda function request.
@@ -44,6 +90,12 @@ public class App implements RequestHandler<Map<String, Object>, String> {
         if (pdfKeys == null || pdfKeys.isEmpty()) {
             return "No files to merge.";
         }
+
+        // Extract folderPrefix from input (default to empty string for backward compatibility)
+        String folderPrefix = (String) input.getOrDefault("folderPrefix", "");
+        if (folderPrefix == null) {
+            folderPrefix = "";
+        }
         
         List<String> modifiedPdfKeys = pdfKeys.stream()
             .map(key -> {
@@ -60,7 +112,9 @@ public class App implements RequestHandler<Map<String, Object>, String> {
 
         String baseFileName = pdfKeys.get(0).substring(pdfKeys.get(0).lastIndexOf('/') + 1).replaceAll("_chunk_\\d+", "");
         String mergedFilePath = "/tmp/merged_" + baseFileName;
-        String outputKey = String.format("temp/%s/merged_%s", baseFileName.replace(".pdf", ""), baseFileName);
+
+        MergerPathResult pathResult = constructOutputPath(folderPrefix, pdfKeys);
+        String outputKey = pathResult.outputKey;
 
         try {
             // Download PDFs from S3

@@ -56,9 +56,32 @@ def download_file_from_s3(bucket_name, file_key, local_path, filename):
     print(f"Filename: {filename}| Downloaded {file_key} from {bucket_name} to {local_path}")
 
 
-def save_to_s3(local_path, bucket_name, file_key):
+def extract_folder_prefix(merged_file_key):
+    """
+    Extract folder prefix from the merged file key.
+    
+    The merged file key has the format: temp/{folder_prefix}{basename}/merged_{basename}.pdf
+    The folder prefix is everything between "temp/" and the basename directory.
+    
+    Examples:
+        "temp/folder1/folder2/myfile/merged_myfile.pdf" -> "folder1/folder2/"
+        "temp/myfile/merged_myfile.pdf" -> ""
+    """
+    parts = merged_file_key.split('/')
+    # parts for nested: ["temp", "folder1", "folder2", "myfile", "merged_myfile.pdf"]
+    # parts for flat:   ["temp", "myfile", "merged_myfile.pdf"]
+    # folder_prefix is everything between "temp" (index 0) and the basename dir (index -2)
+    if len(parts) > 3:
+        folder_prefix = '/'.join(parts[1:-2]) + '/'
+    else:
+        folder_prefix = ''
+    return folder_prefix
+
+
+def save_to_s3(local_path, bucket_name, file_key, merged_file_key):
     s3 = boto3.client('s3')
-    save_path = f"result/COMPLIANT_{file_key}"
+    folder_prefix = extract_folder_prefix(merged_file_key)
+    save_path = f"result/{folder_prefix}COMPLIANT_{file_key}"
     with open(local_path, "rb") as data:
         # Wrap the S3 upload_fileobj call with exponential_backoff_retry
         exponential_backoff_retry(
@@ -264,7 +287,7 @@ def lambda_handler(event, context):
             }
 
         try:
-            save_path = save_to_s3(local_path, file_info['bucket'], file_name)
+            save_path = save_to_s3(local_path, file_info['bucket'], file_name, file_info['merged_file_key'])
             print(f"(lambda_handler | Saved file to S3 at: {save_path})")
         except Exception as e:
             print(f"(lambda_handler | Failed to save file to S3: {e})")

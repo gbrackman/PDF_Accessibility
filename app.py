@@ -200,6 +200,10 @@ class PDFAccessibility(Stack):
                                                   name="AWS_REGION",
                                                   value=region
                                               ),
+                                              tasks.TaskEnvironmentVariable(
+                                                  name="FOLDER_PREFIX",
+                                                  value=sfn.JsonPath.string_at("$.folder_prefix")
+                                              ),
                                           ]
                                       )],
                                       launch_target=tasks.EcsFargateLaunchTarget(
@@ -228,6 +232,10 @@ class PDFAccessibility(Stack):
                                               tasks.TaskEnvironmentVariable(
                                                   name="AWS_REGION",
                                                   value=region
+                                              ),
+                                              tasks.TaskEnvironmentVariable(
+                                                  name="FOLDER_PREFIX",
+                                                  value=sfn.JsonPath.string_at("$.Overrides.ContainerOverrides[0].Environment[4].Value")
                                               ),
                                           ]
                                       )],
@@ -265,7 +273,8 @@ class PDFAccessibility(Stack):
         pdf_merger_lambda_task = tasks.LambdaInvoke(self, "MergePdfChunks",
                                       lambda_function=pdf_merger_lambda,
                                       payload=sfn.TaskInput.from_object({
-        "fileNames.$": "$.chunks[*].s3_key"
+        "fileNames.$": "$.chunks[*].s3_key",
+        "folderPrefix.$": "$.folder_prefix"
                      }),
                                       output_path=sfn.JsonPath.string_at("$.Payload"))
         pdf_processing_bucket.grant_read_write(pdf_merger_lambda)
